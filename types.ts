@@ -17,6 +17,7 @@ export interface GeneratedImage {
   aspectRatio: AspectRatio;
   modelTier: ModelTier;
   createdAt: number;
+  label?: string; // Nhãn cho mảnh ghép (ví dụ: Mảnh 1, Mảnh 2...)
 }
 
 export interface UploadedFile {
