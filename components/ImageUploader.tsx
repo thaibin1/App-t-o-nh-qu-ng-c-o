@@ -1,3 +1,4 @@
+
 import React, { useRef } from 'react';
 import { UploadedFile } from '../types';
 import { fileToBase64 } from '../services/geminiService';
@@ -8,9 +9,17 @@ interface ImageUploaderProps {
   fileData: UploadedFile | null;
   onFileSelect: (data: UploadedFile | null) => void;
   icon?: React.ReactNode;
+  heightClass?: string;
 }
 
-const ImageUploader: React.FC<ImageUploaderProps> = ({ label, subLabel, fileData, onFileSelect, icon }) => {
+const ImageUploader: React.FC<ImageUploaderProps> = ({ 
+  label, 
+  subLabel, 
+  fileData, 
+  onFileSelect, 
+  icon,
+  heightClass = "h-36" 
+}) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -51,7 +60,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ label, subLabel, fileData
       {!fileData ? (
         <div 
           onClick={() => inputRef.current?.click()}
-          className="border-2 border-dashed border-rose-300 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer hover:bg-rose-50 transition-colors h-36 bg-white group"
+          className={`border-2 border-dashed border-rose-300 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer hover:bg-rose-50 transition-colors ${heightClass} bg-white group`}
         >
           <div className="text-rose-300 group-hover:text-rose-500 transition-colors mb-2">
             {icon || (
@@ -65,7 +74,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ label, subLabel, fileData
           </span>
         </div>
       ) : (
-        <div className="relative group rounded-xl overflow-hidden shadow-md h-36 bg-white">
+        <div className={`relative group rounded-xl overflow-hidden shadow-md ${heightClass} bg-white`}>
           <img 
             src={fileData.previewUrl} 
             alt="Preview" 

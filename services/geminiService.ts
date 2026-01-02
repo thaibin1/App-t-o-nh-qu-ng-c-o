@@ -1,5 +1,6 @@
+
 import { GoogleGenAI } from "@google/genai";
-import { Resolution, UploadedFile, OutputStyle, AspectRatio, ModelTier } from "../types";
+import { Resolution, UploadedFile, OutputStyle, AspectRatio, ModelTier, TypographyConfig, BrandConfig } from "../types";
 
 const LOCAL_STORAGE_KEY = 'beauty_gen_api_key';
 let manualApiKey: string | null = typeof localStorage !== 'undefined' ? localStorage.getItem(LOCAL_STORAGE_KEY) : null;
@@ -120,45 +121,82 @@ const STYLE_PROMPTS: Record<string, string> = {
   'surreal_dreamy': "Style: Surreal / Dreamy. Floating fabrics, magical smoke.",
 };
 
-const constructParts = (modelImage: UploadedFile | null, productImages: UploadedFile[], referenceImage: UploadedFile | null, prompt: string, posterText: string, style: OutputStyle, isPoster: boolean) => {
+const constructParts = (
+  modelImage: UploadedFile | null, 
+  productImages: UploadedFile[], 
+  referenceImage: UploadedFile | null, 
+  prompt: string, 
+  style: OutputStyle, 
+  isPoster: boolean,
+  productScale: number,
+  typography?: TypographyConfig,
+  brand?: BrandConfig
+) => {
   const parts: any[] = [];
-  
-  // Tối ưu prompt: Đưa Text lên đầu để AI chú ý hơn
   const stylePrompt = STYLE_PROMPTS[style] || STYLE_PROMPTS['clean_minimalist'];
-  let basePrompt = `Task: Create a stunning high-quality professional cosmetic advertisement image.
-    Style: ${stylePrompt}
-    ${referenceImage ? 'Instruction: Strictly follow the LIGHTING, COLOR PALETTE, and OVERALL MOOD of the provided style reference image.' : ''}
-    Description: ${prompt}
-    ${isPoster && posterText.trim() ? `Overlay Text: Add the text "${posterText}" aesthetically on the image.` : ''}
-    Note: Ensure products look sharp and realistic. Background must be professional and cohesive.`;
+  
+  // Scale logic
+  let scaleInstruction = "";
+  if (productScale <= 30) scaleInstruction = "The product should appear small and subtle, integrated elegantly into the background as part of the environment.";
+  else if (productScale >= 70) scaleInstruction = "The product should be large and prominent, acting as the main hero filling most of the focus area.";
+  else scaleInstruction = "The product should be sized naturally and balanced within the scene.";
+
+  let basePrompt = `Task: Create a professional cosmetic advertisement ${isPoster ? 'POSTER DESIGN' : 'IMAGE'}.
+    Overall Style: ${stylePrompt}
+    Product Scale: ${scaleInstruction}`;
+
+  if (isPoster && brand && typography) {
+    basePrompt += `
+    POSTER DESIGN STRATEGY:
+    1. BRAND VISUALS:
+       - Brand Colors: Use this palette ${brand.colors}.
+       - Logo Placement: Integrate the uploaded brand logo aesthetically.
+    2. TYPOGRAPHY & COPY:
+       - Language: ${typography.language === 'VN' ? 'Vietnamese (Ensure correct accents)' : 'English'}.
+       - Typography Vibe: ${typography.vibe}.
+       - Copy Content:
+         - HOOK: "${brand.hook}" (Large, catching font)
+         - MAIN MESSAGE: "${brand.core}" (Clear, elegant font)
+         - PROOF/BADGE: "${brand.proof}" (Small, trust-building badge or corner text)
+    3. COMPOSITION: Place products and text in a balanced marketing layout.`;
+  }
+
+  basePrompt += `
+    Scene Description: ${prompt}
+    ${referenceImage ? 'Instruction: Strictly follow the LIGHTING and MOOD of the style reference image.' : ''}
+    Note: Products must be extremely sharp and realistic. Text must be legible and professionally integrated.`;
     
   parts.push({ text: basePrompt });
 
-  // Thêm ảnh dữ liệu
-  if (modelImage) parts.push({ inlineData: { data: modelImage.base64.includes(',') ? modelImage.base64.split(',')[1] : modelImage.base64, mimeType: modelImage.mimeType } });
-  productImages.forEach((img) => parts.push({ inlineData: { data: img.base64.includes(',') ? img.base64.split(',')[1] : img.base64, mimeType: img.mimeType } }));
-  if (referenceImage) parts.push({ inlineData: { data: referenceImage.base64.includes(',') ? referenceImage.base64.split(',')[1] : referenceImage.base64, mimeType: referenceImage.mimeType } });
+  // Add images
+  if (modelImage) parts.push({ inlineData: { data: modelImage.base64.split(',')[1], mimeType: modelImage.mimeType } });
+  productImages.forEach((img) => parts.push({ inlineData: { data: img.base64.split(',')[1], mimeType: img.mimeType } }));
+  if (referenceImage) parts.push({ inlineData: { data: referenceImage.base64.split(',')[1], mimeType: referenceImage.mimeType } });
+  
+  if (isPoster && brand?.logo) parts.push({ inlineData: { data: brand.logo.base64.split(',')[1], mimeType: brand.logo.mimeType } });
+  if (isPoster && typography?.fontReference) parts.push({ inlineData: { data: typography.fontReference.base64.split(',')[1], mimeType: typography.fontReference.mimeType } });
 
   return parts;
 };
 
-// Hàm tạo ảnh đơn có cơ chế Retry
 export const generateSingleBeautyImage = async (
   modelImage: UploadedFile | null, 
   productImages: UploadedFile[], 
   referenceImage: UploadedFile | null, 
   prompt: string, 
-  posterText: string, 
   resolution: Resolution, 
   style: OutputStyle, 
   aspectRatio: AspectRatio, 
   isPoster: boolean, 
+  productScale: number,
   modelTier: ModelTier,
+  typography?: TypographyConfig,
+  brand?: BrandConfig,
   retries = 1
 ): Promise<string | null> => {
   try {
     const ai = getAiClient();
-    const parts = constructParts(modelImage, productImages, referenceImage, prompt, posterText, style, isPoster);
+    const parts = constructParts(modelImage, productImages, referenceImage, prompt, style, isPoster, productScale, typography, brand);
     const modelName = modelTier === 'pro' ? 'gemini-3-pro-image-preview' : 'gemini-2.5-flash-image';
     const config: any = { imageConfig: { aspectRatio } };
     if (modelTier === 'pro') config.imageConfig.imageSize = resolution;
@@ -171,54 +209,38 @@ export const generateSingleBeautyImage = async (
     return null;
   } catch (err: any) {
     if (retries > 0 && (err.message?.includes("500") || err.message?.includes("INTERNAL") || err.message?.includes("SERVER_BUSY"))) {
-      console.warn("Retrying due to server error...");
-      await new Promise(r => setTimeout(r, 2000)); // Đợi 2s rồi thử lại
-      return generateSingleBeautyImage(modelImage, productImages, referenceImage, prompt, posterText, resolution, style, aspectRatio, isPoster, modelTier, retries - 1);
+      await new Promise(r => setTimeout(r, 2000));
+      return generateSingleBeautyImage(modelImage, productImages, referenceImage, prompt, resolution, style, aspectRatio, isPoster, productScale, modelTier, typography, brand, retries - 1);
     }
     handleApiError(err);
     return null;
   }
 };
 
-// Hàm tạo nhiều ảnh XỬ LÝ TUẦN TỰ để tránh lỗi 500
 export const generateBeautyImages = async (
   modelImage: UploadedFile | null, 
   productImages: UploadedFile[], 
   referenceImage: UploadedFile | null, 
   prompt: string, 
-  posterText: string, 
   resolution: Resolution, 
   style: OutputStyle, 
   aspectRatio: AspectRatio, 
   isPoster: boolean, 
+  productScale: number,
   modelTier: ModelTier, 
+  typography?: TypographyConfig,
+  brand?: BrandConfig,
   imageCount: number = 1
 ): Promise<string[]> => {
   const count = Math.max(1, Math.min(4, imageCount));
   const results: string[] = [];
-  
-  // Chạy tuần tự thay vì Promise.all để giảm tải cho API
   for (let i = 0; i < count; i++) {
     try {
-      const res = await generateSingleBeautyImage(
-        modelImage, 
-        productImages, 
-        referenceImage, 
-        prompt, 
-        posterText, 
-        resolution, 
-        style, 
-        aspectRatio, 
-        isPoster, 
-        modelTier
-      );
+      const res = await generateSingleBeautyImage(modelImage, productImages, referenceImage, prompt, resolution, style, aspectRatio, isPoster, productScale, modelTier, typography, brand);
       if (res) results.push(res);
     } catch (err) {
-      console.error(`Error generating image ${i + 1}:`, err);
-      // Nếu lỗi nặng thì dừng luôn để tránh phí quota
       if (i === 0) throw err;
     }
   }
-  
   return results;
 };

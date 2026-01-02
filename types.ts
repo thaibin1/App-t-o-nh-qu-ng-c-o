@@ -1,3 +1,4 @@
+
 export enum Resolution {
   RES_2K = '2K',
   RES_4K = '4K',
@@ -9,6 +10,20 @@ export type AspectRatio = '1:1' | '3:4' | '9:16' | '16:9';
 
 export type ModelTier = 'standard' | 'pro';
 
+export interface TypographyConfig {
+  language: 'VN' | 'EN';
+  vibe: string;
+  fontReference?: UploadedFile | null;
+}
+
+export interface BrandConfig {
+  logo?: UploadedFile | null;
+  colors: string;
+  hook: string;
+  core: string;
+  proof: string;
+}
+
 export interface GeneratedImage {
   id: string;
   url: string;
@@ -17,7 +32,7 @@ export interface GeneratedImage {
   aspectRatio: AspectRatio;
   modelTier: ModelTier;
   createdAt: number;
-  label?: string; // Nhãn cho mảnh ghép (ví dụ: Mảnh 1, Mảnh 2...)
+  label?: string; 
 }
 
 export interface UploadedFile {
